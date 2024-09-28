@@ -1,4 +1,4 @@
-from apache_beam.options.pipeline_options import PipelineOptions
+from apache_beam.options.pipeline_options import PipelineOptions, GoogleCloudOptions
 import json
 import apache_beam as beam
 
@@ -38,3 +38,30 @@ def transform_data(message):
 
     return transform_data
 
+
+def run():
+    # Define your pipeline options
+    options = PipelineOptions()
+    gcp_options = options.view_as(GoogleCloudOptions)
+    gcp_options.project = 'cryptonexus-436910'
+    gcp_options.job_name = 'binance-pubsub-transform'
+    gcp_options.temp_location = 'gs://crypto-bucket-tics/temp'  # Replace with your GCS bucket
+
+    # Create the Apache Beam pipeline
+    with beam.Pipeline(options=options) as p:
+        (
+            p
+            | 'ReadFromPubSub' >> beam.io.ReadFromPubSub(subscription='projects/cryptonexus-436910/subscriptions/crypto-sub')
+            | 'TransformMessages' >> beam.Map(transform_binance_message)
+            | 'Window' >> beam.WindowInto(beam.window.FixedWindows(300))
+            | 'WriteToBigQuery' >> beam.io.WriteToBigQuery(
+                table='crypto_data.crypto_stream',
+                schema=SCHEMA,
+                write_disposition=beam.io.BigQueryDisposition.WRITE_APPEND,
+                create_disposition=beam.io.BigQueryDisposition.CREATE_IF_NEEDED
+            )
+        )
+
+
+if __name__ == "__main__":
+    run()
